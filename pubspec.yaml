@@ -1,5 +1,5 @@
 name: astama_music
-description: "Astama Music Player & Downloader"
+description: "Astama Music Player - Arabic iOS Glass Design"
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -9,11 +9,11 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  youtube_explode_dart: ^2.2.1
+  youtube_explode_dart: ^2.3.6
   path_provider: ^2.1.2
   permission_handler: ^11.3.1
   audioplayers: ^6.0.0
-  glassmorphism: ^3.0.0
+  google_fonts: ^6.1.0
 
 dev_dependencies:
   flutter_test:
