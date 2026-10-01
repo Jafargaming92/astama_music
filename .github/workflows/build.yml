@@ -1,40 +1,43 @@
-name: Build Android APK
+name: Build Release APK
 
 on:
   push:
     branches: [ main, master ]
-  workflow_dispatch:
+  pull_request:
+    branches: [ main, master ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v3
 
-    - name: Set up Java 17
-      uses: actions/setup-java@v4
-      with:
-        java-version: '17'
-        distribution: 'temurin'
+      - name: Set up Java Development Kit (JDK)
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'zulu'
+          java-version: '17'
 
-    - name: Set up Flutter
-      uses: subosito/flutter-action@v2
-      with:
-        channel: 'stable'
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.19.x'
+          channel: 'stable'
+          cache: true
 
-    - name: Create Android Files
-      run: flutter create . --platforms=android
+      - name: Install dependencies
+        run: flutter pub get
 
-    - name: Install Dependencies
-      run: flutter pub get
+      - name: Analyze project
+        run: flutter analyze --no-fatal-infos
 
-    - name: Build APK
-      run: flutter build apk --release
+      - name: Build APK Release
+        run: flutter build apk --release
 
-    - name: Upload APK
-      uses: actions/upload-artifact@v4
-      with:
-        name: astama-music-apk
-        path: build/app/outputs/apk/release/app-release.apk
-        
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: istama-release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          
