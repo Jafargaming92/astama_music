@@ -510,8 +510,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     return '$minutes:$seconds';
   }
-
-  Widget _glassContainer({required Widget child, double radius = 24}) {
+    Widget _glassContainer({required Widget child, double radius = 24}) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.08),
@@ -716,4 +715,162 @@ class _HomeScreenState extends State<HomeScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                IconButton
+                IconButton(
+                  icon: const Icon(Icons.replay_10_rounded),
+                  color: bgCream,
+                  iconSize: 28,
+                  onPressed: () => _seekSeconds(-10),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.skip_previous_rounded),
+                  color: bgCream,
+                  iconSize: 36,
+                  onPressed: _previousSong,
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  decoration: BoxDecoration(
+                    color: primaryGreen,
+                    shape: BoxShape.circle,
+                  ),
+                  child: IconButton(
+                    icon: Icon(_isPlaying
+                        ? Icons.pause_rounded
+                        : Icons.play_arrow_rounded),
+                    color: bgCream,
+                    iconSize: 36,
+                    onPressed: _togglePlayPause,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: const Icon(Icons.skip_next_rounded),
+                  color: bgCream,
+                  iconSize: 36,
+                  onPressed: _nextSong,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.forward_10_rounded),
+                  color: bgCream,
+                  iconSize: 28,
+                  onPressed: () => _seekSeconds(10),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF121212),
+      appBar: AppBar(
+        title: const Text(
+          'إستمع',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        centerTitle: true,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _glassContainer(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _urlController,
+                              style: TextStyle(color: bgCream),
+                              decoration: InputDecoration(
+                                hintText: 'ألصق رابط يوتيوب هنا...',
+                                hintStyle: TextStyle(
+                                  color: bgCream.withValues(alpha: 0.5),
+                                ),
+                                border: InputBorder.none,
+                                prefixIcon: Icon(
+                                  Icons.link_rounded,
+                                  color: primaryGreen,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: primaryGreen,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            onPressed: _isDownloading ? null : _downloadAudio,
+                            child: _isDownloading
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Text('تحميل'),
+                          ),
+                        ],
+                      ),
+                      if (_isDownloading) ...[
+                        const SizedBox(height: 12),
+                        LinearProgressIndicator(
+                          value:
+                              _downloadProgress > 0 ? _downloadProgress : null,
+                          backgroundColor: Colors.white10,
+                          color: primaryGreen,
+                        ),
+                      ],
+                      const SizedBox(height: 8),
+                      Text(
+                        _statusMessage,
+                        style: TextStyle(
+                          color: bgCream.withValues(alpha: 0.7),
+                          fontSize: 12,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              _buildPlayer(),
+              const SizedBox(height: 20),
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                child: Text(
+                  'المكتبة الصوتية',
+                  style: TextStyle(
+                    color: bgCream,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              _buildLibrary(),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
