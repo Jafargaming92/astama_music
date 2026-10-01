@@ -22,7 +22,10 @@ class IstamaApp extends StatelessWidget {
     return MaterialApp(
       title: 'إستمع',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData.dark(),
+      theme: ThemeData(
+        brightness: Brightness.dark,
+        useMaterial3: true,
+      ),
       home: const HomeScreen(),
     );
   }
@@ -85,14 +88,15 @@ class _HomeScreenState extends State<HomeScreen> {
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
 
-  List<File> _offlineSongs = [];
-  Map<String, SongMetaData> _songsMetadata = {};
+  List<File> _offlineSongs = <File>[];
+  Map<String, SongMetaData> _songsMetadata =
+      <String, SongMetaData>{};
 
   @override
   void initState() {
     super.initState();
 
-    _initLibrary();
+    _initialize();
 
     _audioPlayer.onPlayerStateChanged.listen((state) {
       if (!mounted) return;
@@ -123,20 +127,21 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  @override
-  void dispose() {
-    _audioPlayer.dispose();
-    _urlController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _initLibrary() async {
+  Future<void> _initialize() async {
     await _loadMetadata();
     await _loadOfflineSongs();
   }
 
+  @override
+  void dispose() {
+    _urlController.dispose();
+    _audioPlayer.dispose();
+    super.dispose();
+  }
+
   Future<Directory> _getMusicDirectory() async {
-    final baseDirectory = await getApplicationDocumentsDirectory();
+    final baseDirectory =
+        await getApplicationDocumentsDirectory();
 
     final musicDirectory = Directory(
       '${baseDirectory.path}/IstamaMusic',
@@ -150,46 +155,55 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadMetadata() async {
-    final prefs = await SharedPreferences.getInstance();
-
-    final metadataRaw = prefs.getString('songs_metadata');
-
-    if (metadataRaw == null || metadataRaw.isEmpty) {
-      return;
-    }
-
     try {
-      final decoded = jsonDecode(metadataRaw);
+      final prefs = await SharedPreferences.getInstance();
 
-      if (decoded is Map<String, dynamic>) {
-        final Map<String, SongMetaData> loaded = {};
+      final raw = prefs.getString('songs_metadata');
 
-        decoded.forEach((key, value) {
-          if (value is Map<String, dynamic>) {
-            loaded[key] = SongMetaData.fromJson(value);
-          }
-        });
-
-        _songsMetadata = loaded;
+      if (raw == null || raw.isEmpty) {
+        return;
       }
+
+      final decoded = jsonDecode(raw);
+
+      if (decoded is! Map) {
+        return;
+      }
+
+      final loaded = <String, SongMetaData>{};
+
+      for (final entry in decoded.entries) {
+        final value = entry.value;
+
+        if (value is Map) {
+          loaded[entry.key.toString()] =
+              SongMetaData.fromJson(
+            Map<String, dynamic>.from(value),
+          );
+        }
+      }
+
+      _songsMetadata = loaded;
     } catch (_) {
-      _songsMetadata = {};
+      _songsMetadata = <String, SongMetaData>{};
     }
   }
 
   Future<void> _saveMetadata() async {
-    final prefs = await SharedPreferences.getInstance();
+    try {
+      final prefs = await SharedPreferences.getInstance();
 
-    final rawMap = <String, dynamic>{};
+      final rawMap = <String, dynamic>{};
 
-    _songsMetadata.forEach((key, value) {
-      rawMap[key] = value.toJson();
-    });
+      for (final entry in _songsMetadata.entries) {
+        rawMap[entry.key] = entry.value.toJson();
+      }
 
-    await prefs.setString(
-      'songs_metadata',
-      jsonEncode(rawMap),
-    );
+      await prefs.setString(
+        'songs_metadata',
+        jsonEncode(rawMap),
+      );
+    } catch (_) {}
   }
 
   Future<void> _loadOfflineSongs() async {
@@ -205,7 +219,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
             return path.endsWith('.mp3') ||
                 path.endsWith('.m4a') ||
-                path.endsWith('.webm');
+                path.endsWith('.webm') ||
+                path.endsWith('.opus') ||
+                path.endsWith('.aac');
           })
           .toList();
 
@@ -224,7 +240,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
 
       setState(() {
-        _offlineSongs = [];
+        _offlineSongs = <File>[];
       });
     }
   }
@@ -235,19 +251,21 @@ class _HomeScreenState extends State<HomeScreen> {
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
 
-    if (clean.length > 50) {
-      clean = clean.substring(0, 50).trim();
+    if (clean.length > 60) {
+      clean = clean.substring(0, 60).trim();
     }
 
     if (clean.isEmpty) {
-      clean = 'audio_${DateTime.now().millisecondsSinceEpoch}';
+      clean =
+          'audio_${DateTime.now().millisecondsSinceEpoch}';
     }
 
     return clean;
   }
 
   String _getFileNameWithoutExtension(String path) {
-    final name = path.split(Platform.pathSeparator).last;
+    final name =
+        path.split(Platform.pathSeparator).last;
 
     final dotIndex = name.lastIndexOf('.');
 
@@ -265,7 +283,18 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
 
       setState(() {
-        _statusMessage = 'يرجى إدخال الرابط أولاً!';
+        _statusMessage = 'يرجى إدخال رابط يوتيوب أولاً';
+      });
+
+      return;
+    }
+
+    if (!url.contains('youtube.com') &&
+        !url.contains('youtu.be')) {
+      if (!mounted) return;
+
+      setState(() {
+        _statusMessage = 'الرابط يجب أن يكون من يوتيوب';
       });
 
       return;
@@ -275,8 +304,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
     setState(() {
       _isDownloading = true;
-      _downloadProgress = 0;
-      _statusMessage = 'جاري الاتصال واستخراج الصوت...';
+      _downloadProgress = 0.0;
+      _statusMessage = 'جاري الاتصال بيوتيوب...';
     });
 
     final yt = YoutubeExplode();
@@ -287,17 +316,28 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final video = await yt.videos.get(url);
 
-      final manifest =
-          await yt.videos.streamsClient.getManifest(video.id);
+      if (!mounted) return;
+
+      setState(() {
+        _currentSongName = video.title;
+        _currentThumbnailUrl =
+            video.thumbnails.highResUrl;
+        _statusMessage = 'جاري العثور على أفضل جودة صوت...';
+      });
+
+      final manifest = await yt.videos.streamsClient
+          .getManifest(video.id);
 
       final audioStreamInfo =
           manifest.audioOnly.withHighestBitrate();
 
       final directory = await _getMusicDirectory();
 
-      final cleanTitle = _sanitizeFileName(video.title);
+      final cleanTitle =
+          _sanitizeFileName(video.title);
 
-      final extension = audioStreamInfo.container.name.toLowerCase();
+      final extension =
+          audioStreamInfo.container.name.toLowerCase();
 
       var finalPath =
           '${directory.path}/$cleanTitle.$extension';
@@ -306,7 +346,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
       var counter = 1;
 
-      while (await tempFile.exists()) {
+      while (await tempFile!.exists()) {
         finalPath =
             '${directory.path}/${cleanTitle}_$counter.$extension';
 
@@ -315,19 +355,18 @@ class _HomeScreenState extends State<HomeScreen> {
         counter++;
       }
 
+      final downloadedFile = tempFile!;
+
       if (!mounted) return;
 
       setState(() {
-        _currentSongName = video.title;
-        _currentThumbnailUrl =
-            video.thumbnails.highResUrl;
-        _statusMessage = 'جاري تنزيل الملف الصوتي...';
+        _statusMessage = 'جاري تنزيل الصوت...';
       });
 
-      final stream =
-          yt.videos.streamsClient.get(audioStreamInfo);
+      final stream = yt.videos.streamsClient
+          .get(audioStreamInfo);
 
-      outputSink = tempFile.openWrite();
+      outputSink = downloadedFile.openWrite();
 
       final totalBytes =
           audioStreamInfo.size.totalBytes;
@@ -337,13 +376,15 @@ class _HomeScreenState extends State<HomeScreen> {
       await for (final data in stream) {
         receivedBytes += data.length;
 
-        outputSink.add(data);
+        outputSink!.add(data);
 
         if (mounted && totalBytes > 0) {
+          final progress =
+              receivedBytes / totalBytes;
+
           setState(() {
             _downloadProgress =
-                (receivedBytes / totalBytes)
-                    .clamp(0.0, 1.0);
+                progress.clamp(0.0, 1.0);
           });
         }
       }
@@ -353,15 +394,15 @@ class _HomeScreenState extends State<HomeScreen> {
 
       outputSink = null;
 
-      final downloadedFile = tempFile;
-
       final metadata = SongMetaData(
         path: downloadedFile.path,
         title: video.title,
-        thumbnailUrl: video.thumbnails.highResUrl,
+        thumbnailUrl:
+            video.thumbnails.highResUrl,
       );
 
-      _songsMetadata[downloadedFile.path] = metadata;
+      _songsMetadata[downloadedFile.path] =
+          metadata;
 
       await _saveMetadata();
       await _loadOfflineSongs();
@@ -372,6 +413,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _statusMessage = 'تم التحميل بنجاح!';
         _isDownloading = false;
         _isInputExpanded = false;
+        _downloadProgress = 1.0;
         _urlController.clear();
       });
 
@@ -380,17 +422,19 @@ class _HomeScreenState extends State<HomeScreen> {
         metadata.title,
         thumbnailUrl: metadata.thumbnailUrl,
       );
-    } catch (e) {
+    } catch (_) {
       if (outputSink != null) {
         try {
-          await outputSink.close();
+          await outputSink!.close();
         } catch (_) {}
       }
 
-      if (tempFile != null) {
+      final fileToDelete = tempFile;
+
+      if (fileToDelete != null) {
         try {
-          if (await tempFile.exists()) {
-            await tempFile.delete();
+          if (await fileToDelete.exists()) {
+            await fileToDelete.delete();
           }
         } catch (_) {}
       }
@@ -399,9 +443,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
       setState(() {
         _isDownloading = false;
-        _downloadProgress = 0;
+        _downloadProgress = 0.0;
         _statusMessage =
-            'فشل الاستخراج: تحقق من الرابط والاتصال بالإنترنت.';
+            'فشل التحميل. تأكد من الرابط والاتصال بالإنترنت.';
       });
     } finally {
       yt.close();
@@ -419,7 +463,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
 
       setState(() {
-        _statusMessage = 'الملف غير موجود.';
+        _statusMessage = 'الملف غير موجود';
       });
 
       await _loadOfflineSongs();
@@ -445,14 +489,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (!mounted) return;
 
-      setState(() {});
+      setState(() {
+        _statusMessage = 'يتم تشغيل الصوت';
+      });
     } catch (_) {
       if (!mounted) return;
 
       setState(() {
-        _statusMessage =
-            'تعذر تشغيل الملف الصوتي.';
         _isPlaying = false;
+        _statusMessage =
+            'تعذر تشغيل الملف الصوتي';
       });
     }
   }
@@ -464,7 +510,8 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     if (_currentPlayingPath != null) {
-      final file = File(_currentPlayingPath!);
+      final file =
+          File(_currentPlayingPath!);
 
       if (await file.exists()) {
         await _audioPlayer.resume();
@@ -474,6 +521,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (_offlineSongs.isNotEmpty) {
       final firstFile = _offlineSongs.first;
+
       final metadata =
           _songsMetadata[firstFile.path];
 
@@ -483,16 +531,19 @@ class _HomeScreenState extends State<HomeScreen> {
             _getFileNameWithoutExtension(
               firstFile.path,
             ),
-        thumbnailUrl: metadata?.thumbnailUrl,
+        thumbnailUrl:
+            metadata?.thumbnailUrl,
       );
     }
   }
 
-  Future<void> _seek10Seconds(bool forward) async {
-    if (_duration == Duration.zero) return;
+  Future<void> _seekSeconds(int seconds) async {
+    if (_duration == Duration.zero) {
+      return;
+    }
 
     var target =
-        _position + Duration(seconds: forward ? 10 : -10);
+        _position + Duration(seconds: seconds);
 
     if (target < Duration.zero) {
       target = Duration.zero;
@@ -513,11 +564,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final currentIndex =
         _offlineSongs.indexWhere(
-      (file) => file.path == _currentPlayingPath,
+      (file) =>
+          file.path == _currentPlayingPath,
     );
 
     if (currentIndex >= 0 &&
-        currentIndex < _offlineSongs.length - 1) {
+        currentIndex <
+            _offlineSongs.length - 1) {
       final nextFile =
           _offlineSongs[currentIndex + 1];
 
@@ -530,7 +583,8 @@ class _HomeScreenState extends State<HomeScreen> {
             _getFileNameWithoutExtension(
               nextFile.path,
             ),
-        thumbnailUrl: metadata?.thumbnailUrl,
+        thumbnailUrl:
+            metadata?.thumbnailUrl,
       );
     } else {
       await _audioPlayer.stop();
@@ -552,7 +606,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final currentIndex =
         _offlineSongs.indexWhere(
-      (file) => file.path == _currentPlayingPath,
+      (file) =>
+          file.path == _currentPlayingPath,
     );
 
     if (currentIndex > 0) {
@@ -568,7 +623,8 @@ class _HomeScreenState extends State<HomeScreen> {
             _getFileNameWithoutExtension(
               previousFile.path,
             ),
-        thumbnailUrl: metadata?.thumbnailUrl,
+        thumbnailUrl:
+            metadata?.thumbnailUrl,
       );
     }
   }
@@ -578,7 +634,8 @@ class _HomeScreenState extends State<HomeScreen> {
       await _audioPlayer.stop();
 
       _currentPlayingPath = null;
-      _currentSongName = 'اختر أغنية من المكتبة';
+      _currentSongName =
+          'اختر أغنية من المكتبة';
       _currentThumbnailUrl = null;
       _duration = Duration.zero;
       _position = Duration.zero;
@@ -598,21 +655,28 @@ class _HomeScreenState extends State<HomeScreen> {
     await _saveMetadata();
     await _loadOfflineSongs();
 
-    if (mounted) {
-      setState(() {});
-    }
+    if (!mounted) return;
+
+    setState(() {
+      _statusMessage = 'تم حذف الصوتية';
+    });
   }
 
   String _formatDuration(Duration duration) {
-    final minutes =
-        duration.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final minutes = duration.inMinutes
+        .remainder(60)
+        .toString()
+        .padLeft(2, '0');
 
-    final seconds =
-        duration.inSeconds.remainder(60).toString().padLeft(2, '0');
+    final seconds = duration.inSeconds
+        .remainder(60)
+        .toString()
+        .padLeft(2, '0');
 
     if (duration.inHours > 0) {
-      final hours =
-          duration.inHours.toString().padLeft(2, '0');
+      final hours = duration.inHours
+          .toString()
+          .padLeft(2, '0');
 
       return '$hours:$minutes:$seconds';
     }
@@ -626,19 +690,25 @@ class _HomeScreenState extends State<HomeScreen> {
   }) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(radius),
+        color: Colors.white.withValues(
+          alpha: 0.08,
+        ),
+        borderRadius:
+            BorderRadius.circular(radius),
         border: Border.all(
-          color: Colors.white.withOpacity(0.15),
-          width: 1.2,
+          color: Colors.white.withValues(
+            alpha: 0.14,
+          ),
+          width: 1,
         ),
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(radius),
+        borderRadius:
+            BorderRadius.circular(radius),
         child: BackdropFilter(
           filter: ImageFilter.blur(
-            sigmaX: 15,
-            sigmaY: 15,
+            sigmaX: 18,
+            sigmaY: 18,
           ),
           child: child,
         ),
@@ -646,33 +716,52 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildSongList() {
+  Widget _songIcon({
+    double size = 52,
+  }) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: primaryGreen.withValues(
+          alpha: 0.20,
+        ),
+        borderRadius:
+            BorderRadius.circular(14),
+      ),
+      child: Icon(
+        Icons.music_note_rounded,
+        color: primaryGreen,
+        size: size * 0.52,
+      ),
+    );
+  }
+
+  Widget _buildLibrary() {
     if (_offlineSongs.isEmpty) {
       return _glassContainer(
-        radius: 24,
         child: Padding(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(26),
           child: Column(
             children: [
-              Icon(
-                Icons.library_music_outlined,
-                color: primaryGreen,
-                size: 42,
-              ),
-              const SizedBox(height: 10),
+              _songIcon(size: 64),
+              const SizedBox(height: 14),
               Text(
                 'مكتبتك فارغة',
                 style: TextStyle(
                   color: bgCream,
+                  fontSize: 17,
                   fontWeight: FontWeight.bold,
-                  fontSize: 16,
                 ),
               ),
-              const SizedBox(height: 5),
+              const SizedBox(height: 6),
               Text(
-                'أضف رابطاً لتحميل أول صوتية',
+                'أضف رابط يوتيوب لتحميل أول صوتية',
+                textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: bgCream.withOpacity(0.55),
+                  color: bgCream.withValues(
+                    alpha: 0.55,
+                  ),
                   fontSize: 12,
                 ),
               ),
@@ -683,29 +772,31 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     return _glassContainer(
-      radius: 24,
       child: ListView.separated(
         shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        padding: const EdgeInsets.symmetric(
-          vertical: 8,
-        ),
+        physics:
+            const NeverScrollableScrollPhysics(),
+        padding:
+            const EdgeInsets.symmetric(vertical: 8),
         itemCount: _offlineSongs.length,
-        separatorBuilder: (_, __) => Divider(
-          color: Colors.white.withOpacity(0.07),
-          height: 1,
-        ),
+        separatorBuilder: (_, __) {
+          return Divider(
+            height: 1,
+            color: Colors.white.withValues(
+              alpha: 0.07,
+            ),
+          );
+        },
         itemBuilder: (context, index) {
           final file = _offlineSongs[index];
 
           final metadata =
               _songsMetadata[file.path];
 
-          final title =
-              metadata?.title ??
-                  _getFileNameWithoutExtension(
-                    file.path,
-                  );
+          final title = metadata?.title ??
+              _getFileNameWithoutExtension(
+                file.path,
+              );
 
           final thumbnail =
               metadata?.thumbnailUrl ?? '';
@@ -714,6 +805,11 @@ class _HomeScreenState extends State<HomeScreen> {
               _currentPlayingPath == file.path;
 
           return ListTile(
+            contentPadding:
+                const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 4,
+            ),
             onTap: () {
               _playSong(
                 file.path,
@@ -722,14 +818,16 @@ class _HomeScreenState extends State<HomeScreen> {
               );
             },
             leading: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius:
+                  BorderRadius.circular(13),
               child: thumbnail.isNotEmpty
                   ? Image.network(
                       thumbnail,
                       width: 52,
                       height: 52,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) {
+                      errorBuilder:
+                          (_, __, ___) {
                         return _songIcon();
                       },
                     )
@@ -738,7 +836,8 @@ class _HomeScreenState extends State<HomeScreen> {
             title: Text(
               title,
               maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+              overflow:
+                  TextOverflow.ellipsis,
               style: TextStyle(
                 color: bgCream,
                 fontWeight: FontWeight.w600,
@@ -746,17 +845,20 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             subtitle: Text(
               isCurrent
-                  ? 'شغال حالياً'
-                  : 'صوتية محفوظة',
+                  ? 'يعمل الآن'
+                  : 'محفوظ Offline',
               style: TextStyle(
                 color: primaryGreen,
                 fontSize: 11,
               ),
             ),
-            trailing: PopupMenuButton<String>(
+            trailing:
+                PopupMenuButton<String>(
               icon: Icon(
-                Icons.more_vert,
-                color: bgCream.withOpacity(0.7),
+                Icons.more_vert_rounded,
+                color: bgCream.withValues(
+                  alpha: 0.65,
+                ),
               ),
               onSelected: (value) {
                 if (value == 'delete') {
@@ -765,7 +867,7 @@ class _HomeScreenState extends State<HomeScreen> {
               },
               itemBuilder: (_) {
                 return const [
-                  PopupMenuItem(
+                  PopupMenuItem<String>(
                     value: 'delete',
                     child: Text('حذف'),
                   ),
@@ -778,78 +880,13 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _songIcon() {
-    return Container(
-      width: 52,
-      height: 52,
-      decoration: BoxDecoration(
-        color: primaryGreen.withOpacity(0.2),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Icon(
-        Icons.music_note_rounded,
-        color: primaryGreen,
-        size: 28,
-      ),
-    );
-  }
+  Widget _buildPlayer() {
+    final maxMilliseconds =
+        _duration.inMilliseconds;
 
-  @override
-  Widget build(BuildContext context) {
-    final maxDuration =
-        _duration.inMilliseconds.toDouble();
-
-    final currentPosition =
+    final currentMilliseconds =
         _position.inMilliseconds
             .clamp(
               0,
-              maxDuration > 0 ? maxDuration : 1,
-            )
-            .toDouble();
-
-    return Scaffold(
-      body: Stack(
-        children: [
-          Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  const Color(0xFF192017),
-                  primaryGreen.withOpacity(0.4),
-                  const Color(0xFF121511),
-                ],
-                begin: Alignment.topRight,
-                end: Alignment.bottomLeft,
-              ),
-            ),
-          ),
-
-          SafeArea(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 20,
-                vertical: 10,
-              ),
-              child: Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 10,
-                    ),
-                    child: Text(
-                      'إستمع',
-                      style: GoogleFonts.cairo(
-                        fontSize: 32,
-                        fontWeight: FontWeight.bold,
-                        color: bgCream,
-                      ),
-                    ),
-                  ),
-
-                  // إضافة رابط
-                  AnimatedContainer(
-                    duration:
-                        const Duration(milliseconds: 350),
-                    curve: Curves.easeInOutCubic,
-                    margin: const EdgeInsets.symmetric(
-                      ver
+              maxMilliseconds > 0
+                  
