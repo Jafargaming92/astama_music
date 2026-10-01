@@ -74,7 +74,6 @@ class _HomeScreenState extends State<HomeScreen> {
   final Color bgCream = const Color(0xFFF7F2EB);
 
   bool _isDownloading = false;
-  bool _isInputExpanded = false;
   bool _isPlaying = false;
 
   double _downloadProgress = 0.0;
@@ -91,7 +90,6 @@ class _HomeScreenState extends State<HomeScreen> {
   List<File> _offlineSongs = <File>[];
   Map<String, SongMetaData> _songsMetadata = <String, SongMetaData>{};
 
-  // المفتاح = اسم الملف فقط (مسار iOS يتغير بعد التحديث)
   String _key(String path) => path.split(Platform.pathSeparator).last;
 
   @override
@@ -153,7 +151,6 @@ class _HomeScreenState extends State<HomeScreen> {
       for (final entry in decoded.entries) {
         final value = entry.value;
         if (value is Map) {
-          // تحويل المفاتيح القديمة (مسار كامل) إلى اسم ملف
           loaded[_key(entry.key.toString())] =
               SongMetaData.fromJson(Map<String, dynamic>.from(value));
         }
@@ -303,7 +300,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
         if (totalBytes > 0) {
           final progress = (receivedBytes / totalBytes).clamp(0.0, 1.0);
-          // تحديث الواجهة كل 1% فقط لتحسين الأداء
           if (mounted && progress - lastUiUpdate >= 0.01) {
             lastUiUpdate = progress;
             setState(() => _downloadProgress = progress);
@@ -314,7 +310,7 @@ class _HomeScreenState extends State<HomeScreen> {
       await sink.flush();
       await sink.close();
       outputSink = null;
-      tempFile = null; // التحميل نجح، لا نحذف الملف مهما صار بعدها
+      tempFile = null;
 
       _songsMetadata[_key(downloadedFile.path)] = SongMetaData(
         path: _key(downloadedFile.path),
@@ -329,7 +325,6 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _statusMessage = 'تم التحميل بنجاح!';
         _isDownloading = false;
-        _isInputExpanded = false;
         _downloadProgress = 1.0;
         _urlController.clear();
       });
@@ -677,7 +672,7 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(20),
-              child: _thumb(_currentThumbnailUrl, 180),
+              child: _thumb(_currentThumbnailUrl, 160),
             ),
             const SizedBox(height: 16),
             Text(
@@ -712,4 +707,13 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   Text(
                     _formatDuration(_duration),
-                    style: TextStyle
+                    style: TextStyle(color: bgCream.withValues(alpha: 0.6)),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                IconButton
