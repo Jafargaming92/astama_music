@@ -1,5 +1,5 @@
 name: astama_music
-description: "Astama Music Player - Arabic iOS Glass Design"
+description: "Istama Music Player - Arabic iOS Glass Design"
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -14,6 +14,7 @@ dependencies:
   permission_handler: ^11.3.1
   audioplayers: ^6.0.0
   google_fonts: ^6.1.0
+  shared_preferences: ^2.2.2
 
 dev_dependencies:
   flutter_test:
