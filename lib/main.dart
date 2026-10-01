@@ -4,7 +4,6 @@ import 'dart:ui';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
@@ -22,9 +21,10 @@ class IstamaApp extends StatelessWidget {
     return MaterialApp(
       title: 'إستمع',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        brightness: Brightness.dark,
-        useMaterial3: true,
+      theme: ThemeData(brightness: Brightness.dark, useMaterial3: true),
+      builder: (context, child) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: child ?? const SizedBox.shrink(),
       ),
       home: const HomeScreen(),
     );
@@ -42,13 +42,11 @@ class SongMetaData {
     required this.thumbnailUrl,
   });
 
-  Map<String, dynamic> toJson() {
-    return {
-      'path': path,
-      'title': title,
-      'thumbnailUrl': thumbnailUrl,
-    };
-  }
+  Map<String, dynamic> toJson() => {
+        'path': path,
+        'title': title,
+        'thumbnailUrl': thumbnailUrl,
+      };
 
   factory SongMetaData.fromJson(Map<String, dynamic> json) {
     return SongMetaData(
@@ -67,6 +65,8 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  static const String _emptyTitle = 'اختر أغنية من المكتبة';
+
   final TextEditingController _urlController = TextEditingController();
   final AudioPlayer _audioPlayer = AudioPlayer();
 
@@ -80,7 +80,7 @@ class _HomeScreenState extends State<HomeScreen> {
   double _downloadProgress = 0.0;
 
   String _statusMessage = 'ألصق رابط يوتيوب لتحميل الصوتيات';
-  String _currentSongName = 'اختر أغنية من المكتبة';
+  String _currentSongName = _emptyTitle;
 
   String? _currentPlayingPath;
   String? _currentThumbnailUrl;
@@ -89,37 +89,29 @@ class _HomeScreenState extends State<HomeScreen> {
   Duration _position = Duration.zero;
 
   List<File> _offlineSongs = <File>[];
-  Map<String, SongMetaData> _songsMetadata =
-      <String, SongMetaData>{};
+  Map<String, SongMetaData> _songsMetadata = <String, SongMetaData>{};
+
+  // المفتاح = اسم الملف فقط (مسار iOS يتغير بعد التحديث)
+  String _key(String path) => path.split(Platform.pathSeparator).last;
 
   @override
   void initState() {
     super.initState();
-
     _initialize();
 
     _audioPlayer.onPlayerStateChanged.listen((state) {
       if (!mounted) return;
-
-      setState(() {
-        _isPlaying = state == PlayerState.playing;
-      });
+      setState(() => _isPlaying = state == PlayerState.playing);
     });
 
-    _audioPlayer.onDurationChanged.listen((duration) {
+    _audioPlayer.onDurationChanged.listen((d) {
       if (!mounted) return;
-
-      setState(() {
-        _duration = duration;
-      });
+      setState(() => _duration = d);
     });
 
-    _audioPlayer.onPositionChanged.listen((position) {
+    _audioPlayer.onPositionChanged.listen((p) {
       if (!mounted) return;
-
-      setState(() {
-        _position = position;
-      });
+      setState(() => _position = p);
     });
 
     _audioPlayer.onPlayerComplete.listen((_) {
@@ -140,49 +132,32 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<Directory> _getMusicDirectory() async {
-    final baseDirectory =
-        await getApplicationDocumentsDirectory();
-
-    final musicDirectory = Directory(
-      '${baseDirectory.path}/IstamaMusic',
-    );
-
-    if (!await musicDirectory.exists()) {
-      await musicDirectory.create(recursive: true);
+    final base = await getApplicationDocumentsDirectory();
+    final dir = Directory('${base.path}/IstamaMusic');
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
     }
-
-    return musicDirectory;
+    return dir;
   }
 
   Future<void> _loadMetadata() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-
       final raw = prefs.getString('songs_metadata');
-
-      if (raw == null || raw.isEmpty) {
-        return;
-      }
+      if (raw == null || raw.isEmpty) return;
 
       final decoded = jsonDecode(raw);
-
-      if (decoded is! Map) {
-        return;
-      }
+      if (decoded is! Map) return;
 
       final loaded = <String, SongMetaData>{};
-
       for (final entry in decoded.entries) {
         final value = entry.value;
-
         if (value is Map) {
-          loaded[entry.key.toString()] =
-              SongMetaData.fromJson(
-            Map<String, dynamic>.from(value),
-          );
+          // تحويل المفاتيح القديمة (مسار كامل) إلى اسم ملف
+          loaded[_key(entry.key.toString())] =
+              SongMetaData.fromJson(Map<String, dynamic>.from(value));
         }
       }
-
       _songsMetadata = loaded;
     } catch (_) {
       _songsMetadata = <String, SongMetaData>{};
@@ -192,56 +167,36 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _saveMetadata() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-
       final rawMap = <String, dynamic>{};
-
       for (final entry in _songsMetadata.entries) {
         rawMap[entry.key] = entry.value.toJson();
       }
-
-      await prefs.setString(
-        'songs_metadata',
-        jsonEncode(rawMap),
-      );
+      await prefs.setString('songs_metadata', jsonEncode(rawMap));
     } catch (_) {}
   }
 
   Future<void> _loadOfflineSongs() async {
     try {
       final directory = await _getMusicDirectory();
-
-      final entities = directory.listSync();
-
-      final songs = entities
-          .whereType<File>()
-          .where((file) {
-            final path = file.path.toLowerCase();
-
-            return path.endsWith('.mp3') ||
-                path.endsWith('.m4a') ||
-                path.endsWith('.webm') ||
-                path.endsWith('.opus') ||
-                path.endsWith('.aac');
-          })
-          .toList();
+      final songs = directory.listSync().whereType<File>().where((file) {
+        final p = file.path.toLowerCase();
+        return p.endsWith('.mp3') ||
+            p.endsWith('.m4a') ||
+            p.endsWith('.mp4') ||
+            p.endsWith('.webm') ||
+            p.endsWith('.opus') ||
+            p.endsWith('.aac');
+      }).toList();
 
       songs.sort(
-        (a, b) => a.path.toLowerCase().compareTo(
-              b.path.toLowerCase(),
-            ),
+        (a, b) => a.path.toLowerCase().compareTo(b.path.toLowerCase()),
       );
 
       if (!mounted) return;
-
-      setState(() {
-        _offlineSongs = songs;
-      });
+      setState(() => _offlineSongs = songs);
     } catch (_) {
       if (!mounted) return;
-
-      setState(() {
-        _offlineSongs = <File>[];
-      });
+      setState(() => _offlineSongs = <File>[]);
     }
   }
 
@@ -254,53 +209,35 @@ class _HomeScreenState extends State<HomeScreen> {
     if (clean.length > 60) {
       clean = clean.substring(0, 60).trim();
     }
-
     if (clean.isEmpty) {
-      clean =
-          'audio_${DateTime.now().millisecondsSinceEpoch}';
+      clean = 'audio_${DateTime.now().millisecondsSinceEpoch}';
     }
-
     return clean;
   }
 
   String _getFileNameWithoutExtension(String path) {
-    final name =
-        path.split(Platform.pathSeparator).last;
+    final name = _key(path);
+    final dot = name.lastIndexOf('.');
+    return dot > 0 ? name.substring(0, dot) : name;
+  }
 
-    final dotIndex = name.lastIndexOf('.');
-
-    if (dotIndex > 0) {
-      return name.substring(0, dotIndex);
-    }
-
-    return name;
+  String _titleFor(File file) {
+    return _songsMetadata[_key(file.path)]?.title ??
+        _getFileNameWithoutExtension(file.path);
   }
 
   Future<void> _downloadAudio() async {
     final url = _urlController.text.trim();
 
     if (url.isEmpty) {
-      if (!mounted) return;
-
-      setState(() {
-        _statusMessage = 'يرجى إدخال رابط يوتيوب أولاً';
-      });
-
+      setState(() => _statusMessage = 'يرجى إدخال رابط يوتيوب أولاً');
       return;
     }
 
-    if (!url.contains('youtube.com') &&
-        !url.contains('youtu.be')) {
-      if (!mounted) return;
-
-      setState(() {
-        _statusMessage = 'الرابط يجب أن يكون من يوتيوب';
-      });
-
+    if (!url.contains('youtube.com') && !url.contains('youtu.be')) {
+      setState(() => _statusMessage = 'الرابط يجب أن يكون من يوتيوب');
       return;
     }
-
-    if (!mounted) return;
 
     setState(() {
       _isDownloading = true;
@@ -317,98 +254,78 @@ class _HomeScreenState extends State<HomeScreen> {
       final video = await yt.videos.get(url);
 
       if (!mounted) return;
-
       setState(() {
-        _currentSongName = video.title;
-        _currentThumbnailUrl =
-            video.thumbnails.highResUrl;
         _statusMessage = 'جاري العثور على أفضل جودة صوت...';
       });
 
-      final manifest = await yt.videos.streamsClient
-          .getManifest(video.id);
+      final manifest = await yt.videos.streamsClient.getManifest(video.id);
 
-      final audioStreamInfo =
-          manifest.audioOnly.withHighestBitrate();
+      final mp4Streams = manifest.audioOnly
+          .where((s) => s.container == StreamContainer.mp4)
+          .toList();
+
+      final AudioStreamInfo audioStreamInfo = mp4Streams.isNotEmpty
+          ? mp4Streams.withHighestBitrate()
+          : manifest.audioOnly.withHighestBitrate();
 
       final directory = await _getMusicDirectory();
+      final cleanTitle = _sanitizeFileName(video.title);
 
-      final cleanTitle =
-          _sanitizeFileName(video.title);
+      final extension = audioStreamInfo.container == StreamContainer.mp4
+          ? 'm4a'
+          : audioStreamInfo.container.name.toLowerCase();
 
-      final extension =
-          audioStreamInfo.container.name.toLowerCase();
-
-      var finalPath =
-          '${directory.path}/$cleanTitle.$extension';
-
-      tempFile = File(finalPath);
-
+      var candidate = File('${directory.path}/$cleanTitle.$extension');
       var counter = 1;
-
-      while (await tempFile!.exists()) {
-        finalPath =
-            '${directory.path}/${cleanTitle}_$counter.$extension';
-
-        tempFile = File(finalPath);
-
+      while (await candidate.exists()) {
+        candidate =
+            File('${directory.path}/${cleanTitle}_$counter.$extension');
         counter++;
       }
 
-      final downloadedFile = tempFile!;
+      final downloadedFile = candidate;
+      tempFile = downloadedFile;
 
       if (!mounted) return;
+      setState(() => _statusMessage = 'جاري تنزيل الصوت...');
 
-      setState(() {
-        _statusMessage = 'جاري تنزيل الصوت...';
-      });
+      final stream = yt.videos.streamsClient.get(audioStreamInfo);
+      final sink = downloadedFile.openWrite();
+      outputSink = sink;
 
-      final stream = yt.videos.streamsClient
-          .get(audioStreamInfo);
-
-      outputSink = downloadedFile.openWrite();
-
-      final totalBytes =
-          audioStreamInfo.size.totalBytes;
-
+      final totalBytes = audioStreamInfo.size.totalBytes;
       var receivedBytes = 0;
+      var lastUiUpdate = 0.0;
 
       await for (final data in stream) {
         receivedBytes += data.length;
+        sink.add(data);
 
-        outputSink!.add(data);
-
-        if (mounted && totalBytes > 0) {
-          final progress =
-              receivedBytes / totalBytes;
-
-          setState(() {
-            _downloadProgress =
-                progress.clamp(0.0, 1.0);
-          });
+        if (totalBytes > 0) {
+          final progress = (receivedBytes / totalBytes).clamp(0.0, 1.0);
+          // تحديث الواجهة كل 1% فقط لتحسين الأداء
+          if (mounted && progress - lastUiUpdate >= 0.01) {
+            lastUiUpdate = progress;
+            setState(() => _downloadProgress = progress);
+          }
         }
       }
 
-      await outputSink.flush();
-      await outputSink.close();
-
+      await sink.flush();
+      await sink.close();
       outputSink = null;
+      tempFile = null; // التحميل نجح، لا نحذف الملف مهما صار بعدها
 
-      final metadata = SongMetaData(
-        path: downloadedFile.path,
+      _songsMetadata[_key(downloadedFile.path)] = SongMetaData(
+        path: _key(downloadedFile.path),
         title: video.title,
-        thumbnailUrl:
-            video.thumbnails.highResUrl,
+        thumbnailUrl: video.thumbnails.highResUrl,
       );
-
-      _songsMetadata[downloadedFile.path] =
-          metadata;
 
       await _saveMetadata();
       await _loadOfflineSongs();
 
       if (!mounted) return;
-
       setState(() {
         _statusMessage = 'تم التحميل بنجاح!';
         _isDownloading = false;
@@ -419,34 +336,28 @@ class _HomeScreenState extends State<HomeScreen> {
 
       await _playSong(
         downloadedFile.path,
-        metadata.title,
-        thumbnailUrl: metadata.thumbnailUrl,
+        video.title,
+        thumbnailUrl: video.thumbnails.highResUrl,
       );
     } catch (_) {
-      if (outputSink != null) {
-        try {
-          await outputSink!.close();
-        } catch (_) {}
+      try {
+        await outputSink?.close();
+      } catch (_) {}
+
+      try {
+        final f = tempFile;
+        if (f != null && await f.exists()) {
+          await f.delete();
+        }
+      } catch (_) {}
+
+      if (mounted) {
+        setState(() {
+          _isDownloading = false;
+          _downloadProgress = 0.0;
+          _statusMessage = 'فشل التحميل. تأكد من الرابط والاتصال بالإنترنت.';
+        });
       }
-
-      final fileToDelete = tempFile;
-
-      if (fileToDelete != null) {
-        try {
-          if (await fileToDelete.exists()) {
-            await fileToDelete.delete();
-          }
-        } catch (_) {}
-      }
-
-      if (!mounted) return;
-
-      setState(() {
-        _isDownloading = false;
-        _downloadProgress = 0.0;
-        _statusMessage =
-            'فشل التحميل. تأكد من الرابط والاتصال بالإنترنت.';
-      });
     } finally {
       yt.close();
     }
@@ -457,15 +368,9 @@ class _HomeScreenState extends State<HomeScreen> {
     String songName, {
     String? thumbnailUrl,
   }) async {
-    final file = File(path);
-
-    if (!await file.exists()) {
+    if (!await File(path).exists()) {
       if (!mounted) return;
-
-      setState(() {
-        _statusMessage = 'الملف غير موجود';
-      });
-
+      setState(() => _statusMessage = 'الملف غير موجود');
       await _loadOfflineSongs();
       return;
     }
@@ -473,32 +378,25 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       await _audioPlayer.stop();
 
-      _currentPlayingPath = path;
-      _currentSongName = songName;
+      if (!mounted) return;
+      setState(() {
+        _currentPlayingPath = path;
+        _currentSongName = songName;
+        _currentThumbnailUrl =
+            thumbnailUrl ?? _songsMetadata[_key(path)]?.thumbnailUrl;
+        _position = Duration.zero;
+        _duration = Duration.zero;
+      });
 
-      _currentThumbnailUrl =
-          thumbnailUrl ??
-              _songsMetadata[path]?.thumbnailUrl;
-
-      _position = Duration.zero;
-      _duration = Duration.zero;
-
-      await _audioPlayer.play(
-        DeviceFileSource(path),
-      );
+      await _audioPlayer.play(DeviceFileSource(path));
 
       if (!mounted) return;
-
-      setState(() {
-        _statusMessage = 'يتم تشغيل الصوت';
-      });
+      setState(() => _statusMessage = 'يتم تشغيل الصوت');
     } catch (_) {
       if (!mounted) return;
-
       setState(() {
         _isPlaying = false;
-        _statusMessage =
-            'تعذر تشغيل الملف الصوتي';
+        _statusMessage = 'تعذر تشغيل الملف الصوتي';
       });
     }
   }
@@ -509,88 +407,48 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    if (_currentPlayingPath != null) {
-      final file =
-          File(_currentPlayingPath!);
-
-      if (await file.exists()) {
-        await _audioPlayer.resume();
-        return;
-      }
+    final current = _currentPlayingPath;
+    if (current != null && await File(current).exists()) {
+      await _audioPlayer.resume();
+      return;
     }
 
     if (_offlineSongs.isNotEmpty) {
-      final firstFile = _offlineSongs.first;
-
-      final metadata =
-          _songsMetadata[firstFile.path];
-
+      final first = _offlineSongs.first;
       await _playSong(
-        firstFile.path,
-        metadata?.title ??
-            _getFileNameWithoutExtension(
-              firstFile.path,
-            ),
-        thumbnailUrl:
-            metadata?.thumbnailUrl,
+        first.path,
+        _titleFor(first),
+        thumbnailUrl: _songsMetadata[_key(first.path)]?.thumbnailUrl,
       );
     }
   }
 
   Future<void> _seekSeconds(int seconds) async {
-    if (_duration == Duration.zero) {
-      return;
-    }
+    if (_duration == Duration.zero) return;
 
-    var target =
-        _position + Duration(seconds: seconds);
-
-    if (target < Duration.zero) {
-      target = Duration.zero;
-    }
-
-    if (target > _duration) {
-      target = _duration;
-    }
+    var target = _position + Duration(seconds: seconds);
+    if (target < Duration.zero) target = Duration.zero;
+    if (target > _duration) target = _duration;
 
     await _audioPlayer.seek(target);
   }
 
   Future<void> _nextSong() async {
-    if (_offlineSongs.isEmpty ||
-        _currentPlayingPath == null) {
-      return;
-    }
+    if (_offlineSongs.isEmpty || _currentPlayingPath == null) return;
 
-    final currentIndex =
-        _offlineSongs.indexWhere(
-      (file) =>
-          file.path == _currentPlayingPath,
-    );
+    final index =
+        _offlineSongs.indexWhere((f) => f.path == _currentPlayingPath);
 
-    if (currentIndex >= 0 &&
-        currentIndex <
-            _offlineSongs.length - 1) {
-      final nextFile =
-          _offlineSongs[currentIndex + 1];
-
-      final metadata =
-          _songsMetadata[nextFile.path];
-
+    if (index >= 0 && index < _offlineSongs.length - 1) {
+      final next = _offlineSongs[index + 1];
       await _playSong(
-        nextFile.path,
-        metadata?.title ??
-            _getFileNameWithoutExtension(
-              nextFile.path,
-            ),
-        thumbnailUrl:
-            metadata?.thumbnailUrl,
+        next.path,
+        _titleFor(next),
+        thumbnailUrl: _songsMetadata[_key(next.path)]?.thumbnailUrl,
       );
     } else {
       await _audioPlayer.stop();
-
       if (!mounted) return;
-
       setState(() {
         _isPlaying = false;
         _position = Duration.zero;
@@ -599,32 +457,17 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _previousSong() async {
-    if (_offlineSongs.isEmpty ||
-        _currentPlayingPath == null) {
-      return;
-    }
+    if (_offlineSongs.isEmpty || _currentPlayingPath == null) return;
 
-    final currentIndex =
-        _offlineSongs.indexWhere(
-      (file) =>
-          file.path == _currentPlayingPath,
-    );
+    final index =
+        _offlineSongs.indexWhere((f) => f.path == _currentPlayingPath);
 
-    if (currentIndex > 0) {
-      final previousFile =
-          _offlineSongs[currentIndex - 1];
-
-      final metadata =
-          _songsMetadata[previousFile.path];
-
+    if (index > 0) {
+      final prev = _offlineSongs[index - 1];
       await _playSong(
-        previousFile.path,
-        metadata?.title ??
-            _getFileNameWithoutExtension(
-              previousFile.path,
-            ),
-        thumbnailUrl:
-            metadata?.thumbnailUrl,
+        prev.path,
+        _titleFor(prev),
+        thumbnailUrl: _songsMetadata[_key(prev.path)]?.thumbnailUrl,
       );
     }
   }
@@ -632,102 +475,74 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _deleteSong(String path) async {
     if (_currentPlayingPath == path) {
       await _audioPlayer.stop();
-
-      _currentPlayingPath = null;
-      _currentSongName =
-          'اختر أغنية من المكتبة';
-      _currentThumbnailUrl = null;
-      _duration = Duration.zero;
-      _position = Duration.zero;
-      _isPlaying = false;
+      if (mounted) {
+        setState(() {
+          _currentPlayingPath = null;
+          _currentSongName = _emptyTitle;
+          _currentThumbnailUrl = null;
+          _duration = Duration.zero;
+          _position = Duration.zero;
+          _isPlaying = false;
+        });
+      }
     }
 
-    final file = File(path);
-
     try {
+      final file = File(path);
       if (await file.exists()) {
         await file.delete();
       }
     } catch (_) {}
 
-    _songsMetadata.remove(path);
+    _songsMetadata.remove(_key(path));
 
     await _saveMetadata();
     await _loadOfflineSongs();
 
     if (!mounted) return;
-
-    setState(() {
-      _statusMessage = 'تم حذف الصوتية';
-    });
+    setState(() => _statusMessage = 'تم حذف الصوتية');
   }
 
   String _formatDuration(Duration duration) {
-    final minutes = duration.inMinutes
-        .remainder(60)
-        .toString()
-        .padLeft(2, '0');
-
-    final seconds = duration.inSeconds
-        .remainder(60)
-        .toString()
-        .padLeft(2, '0');
+    final minutes =
+        duration.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final seconds =
+        duration.inSeconds.remainder(60).toString().padLeft(2, '0');
 
     if (duration.inHours > 0) {
-      final hours = duration.inHours
-          .toString()
-          .padLeft(2, '0');
-
+      final hours = duration.inHours.toString().padLeft(2, '0');
       return '$hours:$minutes:$seconds';
     }
-
     return '$minutes:$seconds';
   }
 
-  Widget _glassContainer({
-    required Widget child,
-    double radius = 24,
-  }) {
+  Widget _glassContainer({required Widget child, double radius = 24}) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withValues(
-          alpha: 0.08,
-        ),
-        borderRadius:
-            BorderRadius.circular(radius),
+        color: Colors.white.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(radius),
         border: Border.all(
-          color: Colors.white.withValues(
-            alpha: 0.14,
-          ),
+          color: Colors.white.withValues(alpha: 0.14),
           width: 1,
         ),
       ),
       child: ClipRRect(
-        borderRadius:
-            BorderRadius.circular(radius),
+        borderRadius: BorderRadius.circular(radius),
         child: BackdropFilter(
-          filter: ImageFilter.blur(
-            sigmaX: 18,
-            sigmaY: 18,
-          ),
+          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
           child: child,
         ),
       ),
     );
   }
 
-  Widget _songIcon({
-    double size = 52,
-  }) {
+  Widget _songIcon({double size = 52}) {
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: primaryGreen.withValues(
-          alpha: 0.20,
-        ),
-        borderRadius:
-            BorderRadius.circular(14),
+        color: primaryGreen.withValues(alpha: 0.20),
+        borderRadius: BorderRadius.circular(14),
       ),
       child: Icon(
         Icons.music_note_rounded,
@@ -737,35 +552,46 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _thumb(String? url, double size) {
+    if (url == null || url.isEmpty) return _songIcon(size: size);
+    return Image.network(
+      url,
+      width: size,
+      height: size,
+      fit: BoxFit.cover,
+      errorBuilder: (_, __, ___) => _songIcon(size: size),
+    );
+  }
+
   Widget _buildLibrary() {
     if (_offlineSongs.isEmpty) {
       return _glassContainer(
         child: Padding(
           padding: const EdgeInsets.all(26),
-          child: Column(
-            children: [
-              _songIcon(size: 64),
-              const SizedBox(height: 14),
-              Text(
-                'مكتبتك فارغة',
-                style: TextStyle(
-                  color: bgCream,
-                  fontSize: 17,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'أضف رابط يوتيوب لتحميل أول صوتية',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: bgCream.withValues(
-                    alpha: 0.55,
+          child: Center(
+            child: Column(
+              children: [
+                _songIcon(size: 64),
+                const SizedBox(height: 14),
+                Text(
+                  'مكتبتك فارغة',
+                  style: TextStyle(
+                    color: bgCream,
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
                   ),
-                  fontSize: 12,
                 ),
-              ),
-            ],
+                const SizedBox(height: 6),
+                Text(
+                  'أضف رابط يوتيوب لتحميل أول صوتية',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: bgCream.withValues(alpha: 0.55),
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       );
@@ -774,105 +600,61 @@ class _HomeScreenState extends State<HomeScreen> {
     return _glassContainer(
       child: ListView.separated(
         shrinkWrap: true,
-        physics:
-            const NeverScrollableScrollPhysics(),
-        padding:
-            const EdgeInsets.symmetric(vertical: 8),
+        physics: const NeverScrollableScrollPhysics(),
+        padding: const EdgeInsets.symmetric(vertical: 8),
         itemCount: _offlineSongs.length,
-        separatorBuilder: (_, __) {
-          return Divider(
-            height: 1,
-            color: Colors.white.withValues(
-              alpha: 0.07,
-            ),
-          );
-        },
+        separatorBuilder: (_, __) => Divider(
+          height: 1,
+          color: Colors.white.withValues(alpha: 0.07),
+        ),
         itemBuilder: (context, index) {
           final file = _offlineSongs[index];
-
-          final metadata =
-              _songsMetadata[file.path];
-
-          final title = metadata?.title ??
-              _getFileNameWithoutExtension(
-                file.path,
-              );
-
-          final thumbnail =
-              metadata?.thumbnailUrl ?? '';
-
-          final isCurrent =
-              _currentPlayingPath == file.path;
+          final metadata = _songsMetadata[_key(file.path)];
+          final title = _titleFor(file);
+          final thumbnail = metadata?.thumbnailUrl ?? '';
+          final isCurrent = _currentPlayingPath == file.path;
 
           return ListTile(
             contentPadding:
-                const EdgeInsets.symmetric(
-              horizontal: 12,
-              vertical: 4,
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            onTap: () => _playSong(
+              file.path,
+              title,
+              thumbnailUrl: thumbnail,
             ),
-            onTap: () {
-              _playSong(
-                file.path,
-                title,
-                thumbnailUrl: thumbnail,
-              );
-            },
             leading: ClipRRect(
-              borderRadius:
-                  BorderRadius.circular(13),
-              child: thumbnail.isNotEmpty
-                  ? Image.network(
-                      thumbnail,
-                      width: 52,
-                      height: 52,
-                      fit: BoxFit.cover,
-                      errorBuilder:
-                          (_, __, ___) {
-                        return _songIcon();
-                      },
-                    )
-                  : _songIcon(),
+              borderRadius: BorderRadius.circular(13),
+              child: _thumb(thumbnail, 52),
             ),
             title: Text(
               title,
               maxLines: 1,
-              overflow:
-                  TextOverflow.ellipsis,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: bgCream,
                 fontWeight: FontWeight.w600,
               ),
             ),
             subtitle: Text(
-              isCurrent
-                  ? 'يعمل الآن'
-                  : 'محفوظ Offline',
-              style: TextStyle(
-                color: primaryGreen,
-                fontSize: 11,
-              ),
+              isCurrent ? 'يعمل الآن' : 'محفوظ Offline',
+              style: TextStyle(color: primaryGreen, fontSize: 11),
             ),
-            trailing:
-                PopupMenuButton<String>(
+            trailing: PopupMenuButton<String>(
               icon: Icon(
                 Icons.more_vert_rounded,
-                color: bgCream.withValues(
-                  alpha: 0.65,
-                ),
+                color: bgCream.withValues(alpha: 0.65),
               ),
               onSelected: (value) {
                 if (value == 'delete') {
                   _deleteSong(file.path);
                 }
               },
-              itemBuilder: (_) {
-                return const [
-                  PopupMenuItem<String>(
-                    value: 'delete',
-                    child: Text('حذف'),
-                  ),
-                ];
-              },
+              itemBuilder: (_) => const [
+                PopupMenuItem<String>(
+                  value: 'delete',
+                  child: Text('حذف'),
+                ),
+              ],
             ),
           );
         },
@@ -881,12 +663,53 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildPlayer() {
-    final maxMilliseconds =
-        _duration.inMilliseconds;
+    final maxMilliseconds = _duration.inMilliseconds;
+    final maxValue = maxMilliseconds > 0 ? maxMilliseconds.toDouble() : 1.0;
+    final currentValue =
+        _position.inMilliseconds.toDouble().clamp(0.0, maxValue);
 
-    final currentMilliseconds =
-        _position.inMilliseconds
-            .clamp(
-              0,
-              maxMilliseconds > 0
-                  
+    return _glassContainer(
+      radius: 28,
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: _thumb(_currentThumbnailUrl, 180),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              _currentSongName,
+              maxLines: 2,
+              textAlign: TextAlign.center,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: bgCream,
+                fontSize: 17,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Slider(
+              value: currentValue,
+              max: maxValue,
+              activeColor: primaryGreen,
+              inactiveColor: Colors.white24,
+              onChanged: maxMilliseconds > 0
+                  ? (v) => _audioPlayer.seek(Duration(milliseconds: v.toInt()))
+                  : null,
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    _formatDuration(_position),
+                    style: TextStyle(color: bgCream.withValues(alpha: 0.6)),
+                  ),
+                  Text(
+                    _formatDuration(_duration),
+                    style: TextStyle
