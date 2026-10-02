@@ -27,6 +27,10 @@ jobs:
           channel: 'stable'
           cache: true
 
+      # هذا السطر يحل المشكلة جذرياً: ينشئ كل ملفات الأندرويد الناقصة والحديثة تلقائياً بالسيرفر
+      - name: Repair and Create Android Project Setup
+        run: flutter create . --platforms=android --org=com.example
+
       - name: Install dependencies
         run: flutter pub get
 
