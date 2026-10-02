@@ -4,20 +4,23 @@ publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: '>=3.6.0 <4.0.0'
+  sdk: '>=3.0.0 <4.0.0'
 
 dependencies:
   flutter:
     sdk: flutter
   youtube_explode_dart: ^2.3.6
   path_provider: ^2.1.2
+  permission_handler: ^11.3.1
   audioplayers: ^6.0.0
+  google_fonts: ^6.1.0
   shared_preferences: ^2.2.2
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^5.0.0
+  flutter_lints: ^3.0.0
 
 flutter:
   uses-material-design: true
+  
